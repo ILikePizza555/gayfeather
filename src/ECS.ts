@@ -15,23 +15,25 @@ export interface TagComparison {
 // In the future, we want to make it so that the Engine can cache queries so that the entire component table
 // Doesn't need to be iterated through every tick.
 
+export type QueryType = "single" | "many";
+
 /**
  * Object that builds defines the requirements for a Query.
  */
 export class QueryBuilder {
-	queryType: "single" | "many"
-	queryTags: TagComparison[]
+	queryType: QueryType
+	queryTags: TagComparison[] = [];
+
+	constructor(queryType: QueryType) {
+		this.queryType = queryType;
+	}
 
 	static One(): QueryBuilder {
-		const rv = new QueryBuilder();
-		rv.queryType = "single";
-		return rv;
+		return new QueryBuilder("single");
 	}
 
 	static Many(): QueryBuilder {
-		const rv = new QueryBuilder();
-		rv.queryType = "many"
-		return rv;
+		return new QueryBuilder("many");
 	}
 
 	public withTag(operation: "is" | "is not" | "starts with", comparison: string): this {
@@ -48,6 +50,9 @@ export class QueryBuilder {
 		}
 		else if (this.queryType === "many") {
 			return new ManyQuery(this.queryTags.slice());
+		}
+		else {
+			throw new Error(`Expected queryType to be one of ["single", "many"], instead got ${this.queryType}.`);
 		}
 	}
 }
@@ -70,7 +75,7 @@ export interface Query {
 	 * Runs this query on a set of components.
 	 * @param components 
 	 */
-	run(components: Component[]): Component[] | Component;
+	run(components: Component[]): Component[] | Component | undefined;
 }
 
 export abstract class BaseQuery implements Query {
@@ -78,7 +83,7 @@ export abstract class BaseQuery implements Query {
 	protected _queryTags: ReadonlyArray<TagComparison>;
 
 	constructor(queryTags: ReadonlyArray<TagComparison>) {
-		this._queryTags = this._queryTags;
+		this._queryTags = queryTags;
 	}
 
 	public matches(component: Component): boolean {
@@ -108,7 +113,7 @@ class SingleQuery extends BaseQuery {
 		super(queryTags);
 	}
 
-	public run(component: Component[]): Component {
+	public run(component: Component[]): Component | undefined {
 		return component.find(this.matches.bind(this));
 	}
 }
@@ -133,13 +138,13 @@ export interface System {
 	 * Called once by the Engine when the system is first registered.
 	 * @param engine 
 	 */
-	onInitialize(engine: Engine);
+	onInitialize(engine: Engine): void;
 
 	/**
 	 * Called 
 	 * @param engine 
 	 */
-	tick(engine: Engine);
+	tick(engine: Engine): void;
 }
 
 /**
