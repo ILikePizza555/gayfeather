@@ -9,6 +9,9 @@ export interface TagComparison {
 	comparison: string;
 }
 
+/**
+ * Creates a Query.
+ */
 export class QueryBuilder {
 	queryType: "single" | "many"
 	queryTags: TagComparison[]
@@ -43,10 +46,24 @@ export class QueryBuilder {
 	}
 }
 
+/**
+ * An immutable object representing the requirements for components.
+ */
 export interface Query {
 	readonly queryType: "single" | "many";
 
+	/**
+	 * Tests if the given component matches this query.
+	 * 
+	 * It is expected that any value which causes this method to return `true` is part of codomain of `run`.
+	 * @param component 
+	 */
 	testComponent(component: Component): boolean;
+
+	/**
+	 * Runs this query on a set of components.
+	 * @param components 
+	 */
 	run(components: Component[]): Component[] | Component;
 }
 
@@ -101,3 +118,4 @@ class ManyQuery extends BaseQuery {
 		return component.filter(this.testComponent.bind(this));
 	}
 }
+
