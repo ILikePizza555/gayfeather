@@ -1,4 +1,6 @@
-export type Entity = number;
+import * as uuid from "uuid";
+
+export type Entity = string;
 
 export interface Component {
 	tag: string
@@ -9,8 +11,12 @@ export interface TagComparison {
 	comparison: string;
 }
 
+// TODO: Queries aren't anything more than really complicated Array.filter operations right now.
+// In the future, we want to make it so that the Engine can cache queries so that the entire component table
+// Doesn't need to be iterated through every tick.
+
 /**
- * Creates a Query.
+ * Object that builds defines the requirements for a Query.
  */
 export class QueryBuilder {
 	queryType: "single" | "many"
@@ -58,7 +64,7 @@ export interface Query {
 	 * It is expected that any value which causes this method to return `true` is part of codomain of `run`.
 	 * @param component 
 	 */
-	testComponent(component: Component): boolean;
+	matches(component: Component): boolean;
 
 	/**
 	 * Runs this query on a set of components.
@@ -75,7 +81,7 @@ export abstract class BaseQuery implements Query {
 		this._queryTags = this._queryTags;
 	}
 
-	public testComponent(component: Component): boolean {
+	public matches(component: Component): boolean {
 		return this._queryTags.some(v => {
 			if (v.operation === "is") {
 				return component.tag === v.comparison;
@@ -92,7 +98,7 @@ export abstract class BaseQuery implements Query {
 		});
 	}
 
-	public abstract run(components: Component[]): Component[] | Component;
+	public abstract run(components: Component[]): Component[] | Component | undefined;
 }
 
 class SingleQuery extends BaseQuery {
@@ -103,7 +109,7 @@ class SingleQuery extends BaseQuery {
 	}
 
 	public run(component: Component[]): Component {
-		return component.find(this.testComponent.bind(this));
+		return component.find(this.matches.bind(this));
 	}
 }
 
@@ -115,7 +121,104 @@ class ManyQuery extends BaseQuery {
 	}
 
 	public run(component: Component[]): Component[] {
-		return component.filter(this.testComponent.bind(this));
+		return component.filter(this.matches.bind(this));
 	}
 }
 
+/**
+ * Defines a system. This is fundementally a function that operates on a set of Components.
+ */
+export interface System {
+	/**
+	 * Called once by the Engine when the system is first registered.
+	 * @param engine 
+	 */
+	onInitialize(engine: Engine);
+
+	/**
+	 * Called 
+	 * @param engine 
+	 */
+	tick(engine: Engine);
+}
+
+/**
+ * The ECS engine.
+ */
+export class Engine {
+	private _componentTable: Map<string, Component[]> = new Map<string, Component[]>();
+	private _systems: System[] = [];
+
+	private _getEntity(entity: Entity) {
+		const rv = this._componentTable.get(entity);
+
+		if (rv === undefined) {
+			throw new Error(`Entity "${entity}" does not exist.`);
+		}
+
+		return rv;
+	}
+
+	public createEntity(): Entity {
+		const entity = uuid.v4();
+		this._componentTable.set(entity, []);
+		return entity;
+	}
+
+	public removeEntity(entity: Entity) {
+		this._componentTable.delete(entity);
+	}
+
+	public addComponent(entity: Entity, component: Component): number {
+		return this._getEntity(entity).push(component);
+	}
+
+	public removeComponent(entity: Entity, component: Component) {
+		const componentSet = this._getEntity(entity);
+		const componentIndex = componentSet.indexOf(component);
+		componentSet.splice(componentIndex);
+	}
+
+	public removeAllComponents(entity: Entity) {
+		const componentSet = this._getEntity(entity);
+		componentSet.splice(0, componentSet.length);
+	}
+
+	/**
+	 * Runs a query on an entity and returns the matched components.
+	 * @param entity 
+	 * @param query 
+	 */
+	public queryEntity(entity: Entity, query: Query) {
+		return query.run(this._getEntity(entity));
+	}
+
+	/**
+	 * Returns a query on all entities and returns mapping of entities matched with their components.
+	 * @param query 
+	 */
+	public queryAll(query: Query) {
+		const rv: {[index: string]: Component | Component[]} = {}
+
+		for (const [entity, entityComponents] of this._componentTable) {
+			const matchedComponents = query.run(entityComponents);
+			
+			if (matchedComponents) {
+				rv[entity] = matchedComponents;
+			}
+		}
+
+		return rv;
+	}
+
+	public addSystem(system: System) {
+		this._systems.push(system);
+		system.onInitialize(this);
+	}
+
+	public tick() {
+		for (const system of this._systems) {
+			system.tick(this);
+		}
+	}
+}
